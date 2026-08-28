@@ -18,4 +18,19 @@ npm run dev
 
 Open <http://localhost:5173>.
 
-Docker is planned for the PostgreSQL/PostGIS development environment. The current machine does not have Docker installed, so the browser shell is intentionally runnable independently while the backend foundation is added.
+## Backend foundation
+
+The Django domain foundation is now migration-ready. With Docker installed, start PostGIS from the repository root:
+
+```bash
+docker compose up -d db
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py runserver
+```
+
+The API health check is available at <http://localhost:8000/api/health/>.
+
+The next implementation slice is JWT authentication and role-aware incident serializers/endpoints. The current machine does not have Docker installed, so applying migrations against PostgreSQL must wait for a local PostGIS service.
