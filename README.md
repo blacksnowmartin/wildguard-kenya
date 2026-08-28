@@ -33,4 +33,10 @@ python3 -m venv .venv
 
 The API health check is available at <http://localhost:8000/api/health/>.
 
-The next implementation slice is JWT authentication and role-aware incident serializers/endpoints. The current machine does not have Docker installed, so applying migrations against PostgreSQL must wait for a local PostGIS service.
+JWT authentication is now configured with these endpoints:
+
+- `POST /api/auth/token/`
+- `POST /api/auth/refresh/`
+- `GET /api/auth/me/`
+
+The next implementation slice is role-aware incident serializers and endpoints. The current machine does not have Docker installed, so applying migrations or running database-backed tests must wait for a local PostGIS service.
