@@ -54,3 +54,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+SIMPLE_JWT = {
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': os.getenv('DJANGO_SECRET_KEY', 'local-only-secret-key'),
+}
