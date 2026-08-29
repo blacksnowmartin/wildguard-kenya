@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from django.contrib.gis.db.models import PointField
-from django.db import models
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsRangerOrSupervisor, IsSupervisorOrAdmin
-from incidents.models import HWCIncident, IncidentStatusHistory
+from accounts.permissions import IsRangerOrSupervisor
+from incidents.models import HWCIncident
 from incidents.serializers import IncidentCreateSerializer, IncidentDetailSerializer, IncidentStatusUpdateSerializer
-from incidents.services import calculate_hwc_risk
+from incidents.services import calculate_hwc_risk, create_critical_alert, transition_incident_status
 
 
 class IncidentListCreateView(APIView):
@@ -36,6 +34,10 @@ class IncidentListCreateView(APIView):
         incident.risk_score = risk['score']
         incident.risk_level = risk['risk_level']
         incident.save(update_fields=['risk_score', 'risk_level', 'updated_at'])
+
+        if incident.risk_level == HWCIncident.Severity.CRITICAL:
+            create_critical_alert(incident)
+
         return Response(IncidentDetailSerializer(incident).data, status=status.HTTP_201_CREATED)
 
 
@@ -60,22 +62,26 @@ class IncidentActionView(APIView):
     def post(self, request, pk):
         incident = HWCIncident.objects.get(pk=pk)
         action = request.data.get('action')
-        if action == 'verify':
-            incident.verified = True
-            incident.status = HWCIncident.Status.VERIFIED
-        elif action == 'dispatch':
-            incident.status = HWCIncident.Status.DISPATCHED
-        elif action == 'resolve':
-            incident.status = HWCIncident.Status.RESOLVED
-        else:
+        target_map = {
+            'review': HWCIncident.Status.UNDER_REVIEW,
+            'verify': HWCIncident.Status.VERIFIED,
+            'reject': HWCIncident.Status.REJECTED,
+            'dispatch': HWCIncident.Status.DISPATCHED,
+            'respond': HWCIncident.Status.RESPONDING,
+            'resolve': HWCIncident.Status.RESOLVED,
+            'close': HWCIncident.Status.CLOSED,
+        }
+
+        if action not in target_map:
             return Response({'detail': 'Unsupported action.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        incident.save(update_fields=['status', 'verified', 'updated_at'])
-        IncidentStatusHistory.objects.create(
-            incident=incident,
-            actor=request.user,
-            old_status='',
-            new_status=incident.status,
-            notes=f'Action: {action}',
-        )
+        target_status = target_map[action]
+        try:
+            transition_incident_status(incident, target_status, request.user, notes=f'Action: {action}')
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if incident.risk_level == HWCIncident.Severity.CRITICAL and target_status in {HWCIncident.Status.VERIFIED, HWCIncident.Status.DISPATCHED, HWCIncident.Status.RESPONDING}:
+            create_critical_alert(incident)
+
         return Response(IncidentDetailSerializer(incident).data)

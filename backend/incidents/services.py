@@ -2,6 +2,58 @@ from __future__ import annotations
 
 from typing import Any
 
+from incidents.models import Alert, HWCIncident
+
+ALLOWED_STATUS_TRANSITIONS = {
+    HWCIncident.Status.REPORTED: {HWCIncident.Status.UNDER_REVIEW},
+    HWCIncident.Status.UNDER_REVIEW: {HWCIncident.Status.VERIFIED, HWCIncident.Status.REJECTED},
+    HWCIncident.Status.VERIFIED: {HWCIncident.Status.DISPATCHED},
+    HWCIncident.Status.DISPATCHED: {HWCIncident.Status.RESPONDING},
+    HWCIncident.Status.RESPONDING: {HWCIncident.Status.RESOLVED},
+    HWCIncident.Status.RESOLVED: {HWCIncident.Status.CLOSED},
+}
+
+
+def validate_status_transition(current_status: str, next_status: str) -> bool:
+    return next_status in ALLOWED_STATUS_TRANSITIONS.get(current_status, set())
+
+
+def transition_incident_status(incident, next_status: str, actor, notes: str = '') -> HWCIncident:
+    current_status = incident.status
+    if not validate_status_transition(current_status, next_status):
+        raise ValueError(f'Invalid transition from {current_status} to {next_status}.')
+
+    incident.status = next_status
+    incident.save(update_fields=['status', 'updated_at'])
+
+    if hasattr(incident, 'status_history'):
+        incident.status_history.create(
+            actor=actor,
+            old_status=current_status,
+            new_status=next_status,
+            notes=notes,
+        )
+
+    return incident
+
+
+def create_critical_alert(incident) -> Alert | None:
+    if incident.risk_level != HWCIncident.Severity.CRITICAL:
+        return None
+
+    alert, created = Alert.objects.get_or_create(
+        incident=incident,
+        priority=HWCIncident.Severity.CRITICAL,
+        defaults={
+            'title': 'CRITICAL HWC INCIDENT',
+            'message': (
+                f'{incident.species.name} incident at {incident.community.name} '
+                f'has reached a critical risk score of {incident.risk_score}/100.'
+            ),
+        },
+    )
+    return alert if created or alert else None
+
 
 def calculate_hwc_risk(
     *,
