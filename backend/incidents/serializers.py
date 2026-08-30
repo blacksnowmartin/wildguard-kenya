@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 from communities.models import Community, WildlifeSpecies
-from incidents.models import HWCIncident, IncidentStatusHistory
+from incidents.models import Alert, HWCIncident, IncidentStatusHistory
 
 
 class WildlifeSpeciesSerializer(serializers.ModelSerializer):
@@ -107,3 +107,11 @@ class IncidentStatusUpdateSerializer(serializers.ModelSerializer):
             notes=notes,
         )
         return instance
+
+
+class AlertSerializer(serializers.ModelSerializer):
+    incident = IncidentDetailSerializer(read_only=True)
+
+    class Meta:
+        model = Alert
+        fields = ('id', 'incident', 'title', 'message', 'priority', 'created_at')
